@@ -30,11 +30,6 @@ with app.app_context():
     for user in users:
         print(user.id, user.last_name, user.first_name, user.status)
 
-    # Delete one user from the database
-    user_to_delete = User.query.filter_by(email="john.jackson@example.com").first()
-    if user_to_delete:
-        db.session.delete(user_to_delete)
-        db.session.commit()
 
     # Use filter_by for simpler equality checks.
     def get_active_users():
@@ -45,4 +40,10 @@ with app.app_context():
         return users()
     
     get_active_users()
+
+    # Delete one user from the database
+    user_to_delete = User.query.filter_by(email="john.jackson@example.com").first()
+    if user_to_delete:
+        db.session.delete(user_to_delete)
+        db.session.commit()
     

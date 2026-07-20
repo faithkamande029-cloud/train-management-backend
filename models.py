@@ -29,7 +29,7 @@ class UserStatus(Enum):
 
 
 class User(db.Model):
-    __table_name__ = "users"
+    __tablename__ = "users"
 
     id = db.Column(db.Integer(), primary_key=True)
     first_name = db.Column(db.String, nullable=False)
