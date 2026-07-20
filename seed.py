@@ -5,8 +5,7 @@ from models import UserRole
 
 with app.app_context():
     # Create the database tables
-    db.session.query(User).delete()
-    db.session.commit()
+    db.create_all()
 
     # Create a new user
     new_users = [
@@ -103,6 +102,7 @@ with app.app_context():
     ]
 
     # Add the users to the database
-    db.session.add_all(new_users)
+    for user in new_users:
+        db.session.add(user)
     db.session.commit()
     print("Database seeded with initial users.")

@@ -1,5 +1,5 @@
 # filter users by status
-from models import User, UserStatus
+from models import User, UserStatus, db
 from app import app
 
 
@@ -10,6 +10,14 @@ with app.app_context():
     # returns a list of all users in the database 
     for user in users:
         print(user.id, user.last_name, user.first_name, user.status)
+
+    # first 5 users
+    users = User.query.limit(5).all()
+    print("The first 5 users: ", users.id, users.first_name)
+
+    # order users by last name
+    users = User.query.order_by(User.first_name).all()
+    print(users)
 
     # Retrieve the first matching record.
     users = User.query.first()
@@ -22,6 +30,11 @@ with app.app_context():
     for user in users:
         print(user.id, user.last_name, user.first_name, user.status)
 
+    # Delete one user from the database
+    user_to_delete = User.query.filter_by(email="john.jackson@example.com").first()
+    if user_to_delete:
+        db.session.delete(user_to_delete)
+        db.session.commit()
 
     # Use filter_by for simpler equality checks.
     def get_active_users():
