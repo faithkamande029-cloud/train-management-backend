@@ -21,19 +21,10 @@ from schemas import (
 api = Blueprint("api", __name__, url_prefix="/api")
 
 
-class ApiRequestError(Exception):
-    def __init__(self, status, message):
-        self.status = status
-        self.message = message
-        super().__init__(message)
-
-
 class TrainManagementApi(Api):
     """Return JSON errors for all API resources."""
 
     def handle_error(self, error):
-        if isinstance(error, ApiRequestError):
-            return {"error": error.message, "status": error.status}, error.status
         if isinstance(error, ValidationError):
             return {
                 "error": "Validation failed.",
@@ -54,27 +45,6 @@ class TrainManagementApi(Api):
 rest_api = TrainManagementApi(api)
 
 
-def get_json_body():
-    if not request.is_json:
-        raise ApiRequestError(415, "Content-Type must be application/json.")
-    data = request.get_json(silent=True)
-    if data is None:
-        raise ApiRequestError(400, "Request body must contain valid JSON.")
-    if not isinstance(data, dict):
-        raise ApiRequestError(400, "Request body must be a JSON object.")
-    return data
-
-
-def get_or_404(model, record_id):
-    record = db.session.get(model, record_id)
-    if record is None:
-        return None, (
-            {"error": f"{model.__name__} {record_id} was not found.", "status": 404},
-            404,
-        )
-    return record, None
-
-
 def validate_booking(train_id, schedule_id):
     schedule = db.session.get(Schedule, schedule_id)
     if schedule is None:
@@ -89,7 +59,7 @@ class UserListResource(Resource):
         return {"data": UserSchema(many=True).dump(users), "count": len(users)}
 
     def post(self):
-        data = UserSchema().load(get_json_body())
+        data = UserSchema().load(request.get_json())
         data["password"] = generate_password_hash(data["password"])
         user = User(**data)
         db.session.add(user)
@@ -99,16 +69,16 @@ class UserListResource(Resource):
 
 class UserResource(Resource):
     def get(self, user_id):
-        user, error = get_or_404(User, user_id)
-        if error:
-            return error
+        user = db.session.get(User, user_id)
+        if user is None:
+            return {"error": f"User {user_id} was not found.", "status": 404}, 404
         return {"data": UserSchema().dump(user)}
 
     def patch(self, user_id):
-        user, error = get_or_404(User, user_id)
-        if error:
-            return error
-        data = UserSchema().load(get_json_body(), partial=True)
+        user = db.session.get(User, user_id)
+        if user is None:
+            return {"error": f"User {user_id} was not found.", "status": 404}, 404
+        data = UserSchema().load(request.get_json(), partial=True)
         if "password" in data:
             data["password"] = generate_password_hash(data["password"])
         for field, value in data.items():
@@ -117,9 +87,9 @@ class UserResource(Resource):
         return {"data": UserSchema().dump(user)}
 
     def delete(self, user_id):
-        user, error = get_or_404(User, user_id)
-        if error:
-            return error
+        user = db.session.get(User, user_id)
+        if user is None:
+            return {"error": f"User {user_id} was not found.", "status": 404}, 404
         db.session.delete(user)
         db.session.commit()
         return "", 204
@@ -131,7 +101,7 @@ class TrainListResource(Resource):
         return {"data": TrainSchema(many=True).dump(trains), "count": len(trains)}
 
     def post(self):
-        train = Train(**TrainSchema().load(get_json_body()))
+        train = Train(**TrainSchema().load(request.get_json()))
         db.session.add(train)
         db.session.commit()
         return {"data": TrainSchema().dump(train)}, 201
@@ -139,16 +109,16 @@ class TrainListResource(Resource):
 
 class TrainResource(Resource):
     def get(self, train_id):
-        train, error = get_or_404(Train, train_id)
-        if error:
-            return error
+        train = db.session.get(Train, train_id)
+        if train is None:
+            return {"error": f"Train {train_id} was not found.", "status": 404}, 404
         return {"data": TrainSchema().dump(train)}
 
     def patch(self, train_id):
-        train, error = get_or_404(Train, train_id)
-        if error:
-            return error
-        data = TrainSchema().load(get_json_body(), partial=True)
+        train = db.session.get(Train, train_id)
+        if train is None:
+            return {"error": f"Train {train_id} was not found.", "status": 404}, 404
+        data = TrainSchema().load(request.get_json(), partial=True)
         total_seat = data.get("total_seat", train.total_seat)
         available_seat = data.get("available_seat", train.available_seat)
         if available_seat > total_seat:
@@ -159,9 +129,9 @@ class TrainResource(Resource):
         return {"data": TrainSchema().dump(train)}
 
     def delete(self, train_id):
-        train, error = get_or_404(Train, train_id)
-        if error:
-            return error
+        train = db.session.get(Train, train_id)
+        if train is None:
+            return {"error": f"Train {train_id} was not found.", "status": 404}, 404
         db.session.delete(train)
         db.session.commit()
         return "", 204
@@ -173,7 +143,7 @@ class StationListResource(Resource):
         return {"data": StationSchema(many=True).dump(stations), "count": len(stations)}
 
     def post(self):
-        station = Station(**StationSchema().load(get_json_body()))
+        station = Station(**StationSchema().load(request.get_json()))
         db.session.add(station)
         db.session.commit()
         return {"data": StationSchema().dump(station)}, 201
@@ -181,25 +151,25 @@ class StationListResource(Resource):
 
 class StationResource(Resource):
     def get(self, station_id):
-        station, error = get_or_404(Station, station_id)
-        if error:
-            return error
+        station = db.session.get(Station, station_id)
+        if station is None:
+            return {"error": f"Station {station_id} was not found.", "status": 404}, 404
         return {"data": StationSchema().dump(station)}
 
     def patch(self, station_id):
-        station, error = get_or_404(Station, station_id)
-        if error:
-            return error
-        data = StationSchema().load(get_json_body(), partial=True)
+        station = db.session.get(Station, station_id)
+        if station is None:
+            return {"error": f"Station {station_id} was not found.", "status": 404}, 404
+        data = StationSchema().load(request.get_json(), partial=True)
         for field, value in data.items():
             setattr(station, field, value)
         db.session.commit()
         return {"data": StationSchema().dump(station)}
 
     def delete(self, station_id):
-        station, error = get_or_404(Station, station_id)
-        if error:
-            return error
+        station = db.session.get(Station, station_id)
+        if station is None:
+            return {"error": f"Station {station_id} was not found.", "status": 404}, 404
         db.session.delete(station)
         db.session.commit()
         return "", 204
@@ -211,7 +181,7 @@ class ScheduleListResource(Resource):
         return {"data": ScheduleSchema(many=True).dump(schedules), "count": len(schedules)}
 
     def post(self):
-        schedule = Schedule(**ScheduleSchema().load(get_json_body()))
+        schedule = Schedule(**ScheduleSchema().load(request.get_json()))
         db.session.add(schedule)
         db.session.commit()
         return {"data": ScheduleSchema().dump(schedule)}, 201
@@ -219,16 +189,16 @@ class ScheduleListResource(Resource):
 
 class ScheduleResource(Resource):
     def get(self, schedule_id):
-        schedule, error = get_or_404(Schedule, schedule_id)
-        if error:
-            return error
+        schedule = db.session.get(Schedule, schedule_id)
+        if schedule is None:
+            return {"error": f"Schedule {schedule_id} was not found.", "status": 404}, 404
         return {"data": ScheduleSchema().dump(schedule)}
 
     def patch(self, schedule_id):
-        schedule, error = get_or_404(Schedule, schedule_id)
-        if error:
-            return error
-        data = ScheduleSchema().load(get_json_body(), partial=True)
+        schedule = db.session.get(Schedule, schedule_id)
+        if schedule is None:
+            return {"error": f"Schedule {schedule_id} was not found.", "status": 404}, 404
+        data = ScheduleSchema().load(request.get_json(), partial=True)
         from_station_id = data.get("from_station_id", schedule.from_station_id)
         to_station_id = data.get("to_station_id", schedule.to_station_id)
         if from_station_id == to_station_id:
@@ -243,9 +213,9 @@ class ScheduleResource(Resource):
         return {"data": ScheduleSchema().dump(schedule)}
 
     def delete(self, schedule_id):
-        schedule, error = get_or_404(Schedule, schedule_id)
-        if error:
-            return error
+        schedule = db.session.get(Schedule, schedule_id)
+        if schedule is None:
+            return {"error": f"Schedule {schedule_id} was not found.", "status": 404}, 404
         db.session.delete(schedule)
         db.session.commit()
         return "", 204
@@ -257,7 +227,7 @@ class BookingListResource(Resource):
         return {"data": BookingSchema(many=True).dump(bookings), "count": len(bookings)}
 
     def post(self):
-        data = BookingSchema().load(get_json_body())
+        data = BookingSchema().load(request.get_json())
         validate_booking(data["train_id"], data["schedule_id"])
         booking = Booking(**data)
         db.session.add(booking)
@@ -267,16 +237,16 @@ class BookingListResource(Resource):
 
 class BookingResource(Resource):
     def get(self, booking_id):
-        booking, error = get_or_404(Booking, booking_id)
-        if error:
-            return error
+        booking = db.session.get(Booking, booking_id)
+        if booking is None:
+            return {"error": f"Booking {booking_id} was not found.", "status": 404}, 404
         return {"data": BookingSchema().dump(booking)}
 
     def patch(self, booking_id):
-        booking, error = get_or_404(Booking, booking_id)
-        if error:
-            return error
-        data = BookingSchema().load(get_json_body(), partial=True)
+        booking = db.session.get(Booking, booking_id)
+        if booking is None:
+            return {"error": f"Booking {booking_id} was not found.", "status": 404}, 404
+        data = BookingSchema().load(request.get_json(), partial=True)
         validate_booking(
             data.get("train_id", booking.train_id),
             data.get("schedule_id", booking.schedule_id),
@@ -287,9 +257,9 @@ class BookingResource(Resource):
         return {"data": BookingSchema().dump(booking)}
 
     def delete(self, booking_id):
-        booking, error = get_or_404(Booking, booking_id)
-        if error:
-            return error
+        booking = db.session.get(Booking, booking_id)
+        if booking is None:
+            return {"error": f"Booking {booking_id} was not found.", "status": 404}, 404
         db.session.delete(booking)
         db.session.commit()
         return "", 204
@@ -301,7 +271,7 @@ class PaymentListResource(Resource):
         return {"data": PaymentSchema(many=True).dump(payments), "count": len(payments)}
 
     def post(self):
-        payment = Payment(**PaymentSchema().load(get_json_body()))
+        payment = Payment(**PaymentSchema().load(request.get_json()))
         db.session.add(payment)
         db.session.commit()
         return {"data": PaymentSchema().dump(payment)}, 201
@@ -309,25 +279,25 @@ class PaymentListResource(Resource):
 
 class PaymentResource(Resource):
     def get(self, payment_id):
-        payment, error = get_or_404(Payment, payment_id)
-        if error:
-            return error
+        payment = db.session.get(Payment, payment_id)
+        if payment is None:
+            return {"error": f"Payment {payment_id} was not found.", "status": 404}, 404
         return {"data": PaymentSchema().dump(payment)}
 
     def patch(self, payment_id):
-        payment, error = get_or_404(Payment, payment_id)
-        if error:
-            return error
-        data = PaymentSchema().load(get_json_body(), partial=True)
+        payment = db.session.get(Payment, payment_id)
+        if payment is None:
+            return {"error": f"Payment {payment_id} was not found.", "status": 404}, 404
+        data = PaymentSchema().load(request.get_json(), partial=True)
         for field, value in data.items():
             setattr(payment, field, value)
         db.session.commit()
         return {"data": PaymentSchema().dump(payment)}
 
     def delete(self, payment_id):
-        payment, error = get_or_404(Payment, payment_id)
-        if error:
-            return error
+        payment = db.session.get(Payment, payment_id)
+        if payment is None:
+            return {"error": f"Payment {payment_id} was not found.", "status": 404}, 404
         db.session.delete(payment)
         db.session.commit()
         return "", 204
@@ -339,7 +309,7 @@ class FavouriteListResource(Resource):
         return {"data": UserFavouriteSchema(many=True).dump(favourites), "count": len(favourites)}
 
     def post(self):
-        favourite = UserFavourite(**UserFavouriteSchema().load(get_json_body()))
+        favourite = UserFavourite(**UserFavouriteSchema().load(request.get_json()))
         db.session.add(favourite)
         db.session.commit()
         return {"data": UserFavouriteSchema().dump(favourite)}, 201
