@@ -20,24 +20,26 @@ from schemas import (
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
-RESOURCES = {
-    "users": (User, UserSchema),
-    "trains": (Train, TrainSchema),
-    "stations": (Station, StationSchema),
-    "schedules": (Schedule, ScheduleSchema),
-    "bookings": (Booking, BookingSchema),
-    "payments": (Payment, PaymentSchema),
-}
+
+class ApiRequestError(Exception):
+    def __init__(self, status, message):
+        self.status = status
+        self.message = message
+        super().__init__(message)
 
 
 class TrainManagementApi(Api):
-    """Keep API errors consistent for every Flask-RESTful resource."""
+    """Return JSON errors for all API resources."""
 
     def handle_error(self, error):
         if isinstance(error, ApiRequestError):
             return {"error": error.message, "status": error.status}, error.status
         if isinstance(error, ValidationError):
-            return {"error": "Validation failed.", "status": 400, "details": error.messages}, 400
+            return {
+                "error": "Validation failed.",
+                "status": 400,
+                "details": error.messages,
+            }, 400
         if isinstance(error, IntegrityError):
             db.session.rollback()
             return {"error": "The request conflicts with an existing record.", "status": 409}, 409
@@ -52,154 +54,320 @@ class TrainManagementApi(Api):
 rest_api = TrainManagementApi(api)
 
 
-class ApiRequestError(Exception):
-    def __init__(self, status, message):
-        self.status = status
-        self.message = message
-        super().__init__(message)
-
-
-def json_body():
+def get_json_body():
     if not request.is_json:
         raise ApiRequestError(415, "Content-Type must be application/json.")
-    payload = request.get_json(silent=True)
-    if payload is None:
+    data = request.get_json(silent=True)
+    if data is None:
         raise ApiRequestError(400, "Request body must contain valid JSON.")
-    if not isinstance(payload, dict):
+    if not isinstance(data, dict):
         raise ApiRequestError(400, "Request body must be a JSON object.")
-    return payload
-
-
-def get_resource(resource):
-    try:
-        return RESOURCES[resource]
-    except KeyError:
-        return None, None
-
-
-def get_record(resource, record_id):
-    model, _ = get_resource(resource)
-    if model is None:
-        return None
-    return db.session.get(model, record_id)
-
-
-def validate_booking(data):
-    schedule = db.session.get(Schedule, data.get("schedule_id"))
-    if schedule is None:
-        raise ValidationError({"schedule_id": ["Schedule does not exist."]})
-    if schedule.train_id != data.get("train_id"):
-        raise ValidationError({"train_id": ["Must match the selected schedule's train."]})
-
-
-def prepare_data(resource, data):
-    if resource == "users" and "password" in data:
-        data["password"] = generate_password_hash(data["password"])
-    if resource == "bookings" and {"train_id", "schedule_id"} <= data.keys():
-        validate_booking(data)
     return data
 
 
-class CollectionResource(Resource):
-    def get(self, resource):
-        model, schema_class = get_resource(resource)
-        if model is None:
-            return {"error": "Resource not found.", "status": 404}, 404
-        records = db.session.scalars(db.select(model)).all()
-        return {"data": schema_class(many=True).dump(records), "count": len(records)}
+def get_or_404(model, record_id):
+    record = db.session.get(model, record_id)
+    if record is None:
+        return None, (
+            {"error": f"{model.__name__} {record_id} was not found.", "status": 404},
+            404,
+        )
+    return record, None
 
-    def post(self, resource):
-        model, schema_class = get_resource(resource)
-        if model is None:
-            return {"error": "Resource not found.", "status": 404}, 404
-        data = prepare_data(resource, schema_class().load(json_body()))
-        record = model(**data)
-        db.session.add(record)
+
+def validate_booking(train_id, schedule_id):
+    schedule = db.session.get(Schedule, schedule_id)
+    if schedule is None:
+        raise ValidationError({"schedule_id": ["Schedule does not exist."]})
+    if schedule.train_id != train_id:
+        raise ValidationError({"train_id": ["Must match the selected schedule's train."]})
+
+
+class UserListResource(Resource):
+    def get(self):
+        users = db.session.scalars(db.select(User)).all()
+        return {"data": UserSchema(many=True).dump(users), "count": len(users)}
+
+    def post(self):
+        data = UserSchema().load(get_json_body())
+        data["password"] = generate_password_hash(data["password"])
+        user = User(**data)
+        db.session.add(user)
         db.session.commit()
-        return {"data": schema_class().dump(record)}, 201
+        return {"data": UserSchema().dump(user)}, 201
 
 
-class ItemResource(Resource):
-    def get(self, resource, record_id):
-        record = get_record(resource, record_id)
-        if record is None:
-            return self.not_found(resource, record_id)
-        return {"data": get_resource(resource)[1]().dump(record)}
+class UserResource(Resource):
+    def get(self, user_id):
+        user, error = get_or_404(User, user_id)
+        if error:
+            return error
+        return {"data": UserSchema().dump(user)}
 
-    def patch(self, resource, record_id):
-        record = get_record(resource, record_id)
-        if record is None:
-            return self.not_found(resource, record_id)
-        _, schema_class = get_resource(resource)
-        data = schema_class().load(json_body(), partial=True)
-        self.validate_update(resource, record, data)
-        for field, value in prepare_data(resource, data).items():
-            setattr(record, field, value)
+    def patch(self, user_id):
+        user, error = get_or_404(User, user_id)
+        if error:
+            return error
+        data = UserSchema().load(get_json_body(), partial=True)
+        if "password" in data:
+            data["password"] = generate_password_hash(data["password"])
+        for field, value in data.items():
+            setattr(user, field, value)
         db.session.commit()
-        return {"data": schema_class().dump(record)}
+        return {"data": UserSchema().dump(user)}
 
-    def delete(self, resource, record_id):
-        record = get_record(resource, record_id)
-        if record is None:
-            return self.not_found(resource, record_id)
-        db.session.delete(record)
+    def delete(self, user_id):
+        user, error = get_or_404(User, user_id)
+        if error:
+            return error
+        db.session.delete(user)
         db.session.commit()
         return "", 204
 
-    @staticmethod
-    def not_found(resource, record_id):
-        model, _ = get_resource(resource)
-        name = model.__name__ if model is not None else "Resource"
-        return {"error": f"{name} {record_id} was not found.", "status": 404}, 404
 
-    @staticmethod
-    def validate_update(resource, record, data):
-        if resource == "trains":
-            total = data.get("total_seat", record.total_seat)
-            available = data.get("available_seat", record.available_seat)
-            if available > total:
-                raise ValidationError({"available_seat": ["Must not exceed total_seat."]})
-        elif resource == "schedules":
-            from_station = data.get("from_station_id", record.from_station_id)
-            to_station = data.get("to_station_id", record.to_station_id)
-            if from_station == to_station:
-                raise ValidationError({"to_station_id": ["Must differ from from_station_id."]})
-            departure_time = data.get("departure_time", record.departure_time)
-            arrival_time = data.get("arrival_time", record.arrival_time)
-            if arrival_time <= departure_time:
-                raise ValidationError({"arrival_time": ["Must be after departure_time."]})
-        elif resource == "bookings":
-            validate_booking({
-                "train_id": data.get("train_id", record.train_id),
-                "schedule_id": data.get("schedule_id", record.schedule_id),
-            })
-
-
-class FavouriteCollectionResource(Resource):
+class TrainListResource(Resource):
     def get(self):
-        records = db.session.scalars(db.select(UserFavourite)).all()
-        return {"data": UserFavouriteSchema(many=True).dump(records), "count": len(records)}
+        trains = db.session.scalars(db.select(Train)).all()
+        return {"data": TrainSchema(many=True).dump(trains), "count": len(trains)}
 
     def post(self):
-        record = UserFavourite(**UserFavouriteSchema().load(json_body()))
-        db.session.add(record)
+        train = Train(**TrainSchema().load(get_json_body()))
+        db.session.add(train)
         db.session.commit()
-        return {"data": UserFavouriteSchema().dump(record)}, 201
+        return {"data": TrainSchema().dump(train)}, 201
+
+
+class TrainResource(Resource):
+    def get(self, train_id):
+        train, error = get_or_404(Train, train_id)
+        if error:
+            return error
+        return {"data": TrainSchema().dump(train)}
+
+    def patch(self, train_id):
+        train, error = get_or_404(Train, train_id)
+        if error:
+            return error
+        data = TrainSchema().load(get_json_body(), partial=True)
+        total_seat = data.get("total_seat", train.total_seat)
+        available_seat = data.get("available_seat", train.available_seat)
+        if available_seat > total_seat:
+            raise ValidationError({"available_seat": ["Must not exceed total_seat."]})
+        for field, value in data.items():
+            setattr(train, field, value)
+        db.session.commit()
+        return {"data": TrainSchema().dump(train)}
+
+    def delete(self, train_id):
+        train, error = get_or_404(Train, train_id)
+        if error:
+            return error
+        db.session.delete(train)
+        db.session.commit()
+        return "", 204
+
+
+class StationListResource(Resource):
+    def get(self):
+        stations = db.session.scalars(db.select(Station)).all()
+        return {"data": StationSchema(many=True).dump(stations), "count": len(stations)}
+
+    def post(self):
+        station = Station(**StationSchema().load(get_json_body()))
+        db.session.add(station)
+        db.session.commit()
+        return {"data": StationSchema().dump(station)}, 201
+
+
+class StationResource(Resource):
+    def get(self, station_id):
+        station, error = get_or_404(Station, station_id)
+        if error:
+            return error
+        return {"data": StationSchema().dump(station)}
+
+    def patch(self, station_id):
+        station, error = get_or_404(Station, station_id)
+        if error:
+            return error
+        data = StationSchema().load(get_json_body(), partial=True)
+        for field, value in data.items():
+            setattr(station, field, value)
+        db.session.commit()
+        return {"data": StationSchema().dump(station)}
+
+    def delete(self, station_id):
+        station, error = get_or_404(Station, station_id)
+        if error:
+            return error
+        db.session.delete(station)
+        db.session.commit()
+        return "", 204
+
+
+class ScheduleListResource(Resource):
+    def get(self):
+        schedules = db.session.scalars(db.select(Schedule)).all()
+        return {"data": ScheduleSchema(many=True).dump(schedules), "count": len(schedules)}
+
+    def post(self):
+        schedule = Schedule(**ScheduleSchema().load(get_json_body()))
+        db.session.add(schedule)
+        db.session.commit()
+        return {"data": ScheduleSchema().dump(schedule)}, 201
+
+
+class ScheduleResource(Resource):
+    def get(self, schedule_id):
+        schedule, error = get_or_404(Schedule, schedule_id)
+        if error:
+            return error
+        return {"data": ScheduleSchema().dump(schedule)}
+
+    def patch(self, schedule_id):
+        schedule, error = get_or_404(Schedule, schedule_id)
+        if error:
+            return error
+        data = ScheduleSchema().load(get_json_body(), partial=True)
+        from_station_id = data.get("from_station_id", schedule.from_station_id)
+        to_station_id = data.get("to_station_id", schedule.to_station_id)
+        if from_station_id == to_station_id:
+            raise ValidationError({"to_station_id": ["Must differ from from_station_id."]})
+        departure_time = data.get("departure_time", schedule.departure_time)
+        arrival_time = data.get("arrival_time", schedule.arrival_time)
+        if arrival_time <= departure_time:
+            raise ValidationError({"arrival_time": ["Must be after departure_time."]})
+        for field, value in data.items():
+            setattr(schedule, field, value)
+        db.session.commit()
+        return {"data": ScheduleSchema().dump(schedule)}
+
+    def delete(self, schedule_id):
+        schedule, error = get_or_404(Schedule, schedule_id)
+        if error:
+            return error
+        db.session.delete(schedule)
+        db.session.commit()
+        return "", 204
+
+
+class BookingListResource(Resource):
+    def get(self):
+        bookings = db.session.scalars(db.select(Booking)).all()
+        return {"data": BookingSchema(many=True).dump(bookings), "count": len(bookings)}
+
+    def post(self):
+        data = BookingSchema().load(get_json_body())
+        validate_booking(data["train_id"], data["schedule_id"])
+        booking = Booking(**data)
+        db.session.add(booking)
+        db.session.commit()
+        return {"data": BookingSchema().dump(booking)}, 201
+
+
+class BookingResource(Resource):
+    def get(self, booking_id):
+        booking, error = get_or_404(Booking, booking_id)
+        if error:
+            return error
+        return {"data": BookingSchema().dump(booking)}
+
+    def patch(self, booking_id):
+        booking, error = get_or_404(Booking, booking_id)
+        if error:
+            return error
+        data = BookingSchema().load(get_json_body(), partial=True)
+        validate_booking(
+            data.get("train_id", booking.train_id),
+            data.get("schedule_id", booking.schedule_id),
+        )
+        for field, value in data.items():
+            setattr(booking, field, value)
+        db.session.commit()
+        return {"data": BookingSchema().dump(booking)}
+
+    def delete(self, booking_id):
+        booking, error = get_or_404(Booking, booking_id)
+        if error:
+            return error
+        db.session.delete(booking)
+        db.session.commit()
+        return "", 204
+
+
+class PaymentListResource(Resource):
+    def get(self):
+        payments = db.session.scalars(db.select(Payment)).all()
+        return {"data": PaymentSchema(many=True).dump(payments), "count": len(payments)}
+
+    def post(self):
+        payment = Payment(**PaymentSchema().load(get_json_body()))
+        db.session.add(payment)
+        db.session.commit()
+        return {"data": PaymentSchema().dump(payment)}, 201
+
+
+class PaymentResource(Resource):
+    def get(self, payment_id):
+        payment, error = get_or_404(Payment, payment_id)
+        if error:
+            return error
+        return {"data": PaymentSchema().dump(payment)}
+
+    def patch(self, payment_id):
+        payment, error = get_or_404(Payment, payment_id)
+        if error:
+            return error
+        data = PaymentSchema().load(get_json_body(), partial=True)
+        for field, value in data.items():
+            setattr(payment, field, value)
+        db.session.commit()
+        return {"data": PaymentSchema().dump(payment)}
+
+    def delete(self, payment_id):
+        payment, error = get_or_404(Payment, payment_id)
+        if error:
+            return error
+        db.session.delete(payment)
+        db.session.commit()
+        return "", 204
+
+
+class FavouriteListResource(Resource):
+    def get(self):
+        favourites = db.session.scalars(db.select(UserFavourite)).all()
+        return {"data": UserFavouriteSchema(many=True).dump(favourites), "count": len(favourites)}
+
+    def post(self):
+        favourite = UserFavourite(**UserFavouriteSchema().load(get_json_body()))
+        db.session.add(favourite)
+        db.session.commit()
+        return {"data": UserFavouriteSchema().dump(favourite)}, 201
 
 
 class FavouriteResource(Resource):
     def delete(self, user_id, train_id, station_id):
-        record = db.session.get(UserFavourite, (user_id, train_id, station_id))
-        if record is None:
+        favourite = db.session.get(UserFavourite, (user_id, train_id, station_id))
+        if favourite is None:
             return {"error": "Favourite was not found.", "status": 404}, 404
-        db.session.delete(record)
+        db.session.delete(favourite)
         db.session.commit()
         return "", 204
 
 
-rest_api.add_resource(CollectionResource, "/<string:resource>")
-rest_api.add_resource(ItemResource, "/<string:resource>/<int:record_id>")
-rest_api.add_resource(FavouriteCollectionResource, "/favourites")
+rest_api.add_resource(UserListResource, "/users")
+rest_api.add_resource(UserResource, "/users/<int:user_id>")
+rest_api.add_resource(TrainListResource, "/trains")
+rest_api.add_resource(TrainResource, "/trains/<int:train_id>")
+rest_api.add_resource(StationListResource, "/stations")
+rest_api.add_resource(StationResource, "/stations/<int:station_id>")
+rest_api.add_resource(ScheduleListResource, "/schedules")
+rest_api.add_resource(ScheduleResource, "/schedules/<int:schedule_id>")
+rest_api.add_resource(BookingListResource, "/bookings")
+rest_api.add_resource(BookingResource, "/bookings/<int:booking_id>")
+rest_api.add_resource(PaymentListResource, "/payments")
+rest_api.add_resource(PaymentResource, "/payments/<int:payment_id>")
+rest_api.add_resource(FavouriteListResource, "/favourites")
 rest_api.add_resource(
     FavouriteResource, "/favourites/<int:user_id>/<int:train_id>/<int:station_id>"
 )
