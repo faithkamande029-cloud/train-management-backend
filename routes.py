@@ -1,8 +1,7 @@
-"""JSON API routes for the train management service."""
+"""Flask-RESTful resources for the train management service."""
 
-from functools import wraps
-
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, request
+from flask_restful import Api, Resource
 from marshmallow import ValidationError
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import HTTPException
@@ -31,63 +30,58 @@ RESOURCES = {
 }
 
 
-def error_response(status, message, details=None):
-    payload = {"error": message, "status": status}
-    if details:
-        payload["details"] = details
-    return jsonify(payload), status
+class TrainManagementApi(Api):
+    """Keep API errors consistent for every Flask-RESTful resource."""
+
+    def handle_error(self, error):
+        if isinstance(error, ApiRequestError):
+            return {"error": error.message, "status": error.status}, error.status
+        if isinstance(error, ValidationError):
+            return {"error": "Validation failed.", "status": 400, "details": error.messages}, 400
+        if isinstance(error, IntegrityError):
+            db.session.rollback()
+            return {"error": "The request conflicts with an existing record.", "status": 409}, 409
+        if isinstance(error, HTTPException):
+            return {"error": error.description, "status": error.code}, error.code
+
+        db.session.rollback()
+        api.logger.exception("Unhandled API error", exc_info=error)
+        return {"error": "An unexpected server error occurred.", "status": 500}, 500
 
 
-@api.app_errorhandler(ValidationError)
-def handle_validation_error(error):
-    return error_response(400, "Validation failed.", error.messages)
+rest_api = TrainManagementApi(api)
 
 
-@api.app_errorhandler(IntegrityError)
-def handle_integrity_error(error):
-    db.session.rollback()
-    return error_response(409, "The request conflicts with an existing record.")
-
-
-@api.app_errorhandler(HTTPException)
-def handle_http_error(error):
-    return error_response(error.code, error.description)
-
-
-@api.app_errorhandler(Exception)
-def handle_unexpected_error(error):
-    db.session.rollback()
-    api.logger.exception("Unhandled API error", exc_info=error)
-    return error_response(500, "An unexpected server error occurred.")
+class ApiRequestError(Exception):
+    def __init__(self, status, message):
+        self.status = status
+        self.message = message
+        super().__init__(message)
 
 
 def json_body():
     if not request.is_json:
-        return error_response(415, "Content-Type must be application/json.")
+        raise ApiRequestError(415, "Content-Type must be application/json.")
     payload = request.get_json(silent=True)
     if payload is None:
-        return error_response(400, "Request body must contain valid JSON.")
+        raise ApiRequestError(400, "Request body must contain valid JSON.")
     if not isinstance(payload, dict):
-        return error_response(400, "Request body must be a JSON object.")
+        raise ApiRequestError(400, "Request body must be a JSON object.")
     return payload
 
 
-def resource_handler(handler):
-    @wraps(handler)
-    def wrapped(resource, *args, **kwargs):
-        if resource not in RESOURCES:
-            return error_response(404, "Resource not found.")
-        return handler(resource, *args, **kwargs)
-
-    return wrapped
+def get_resource(resource):
+    try:
+        return RESOURCES[resource]
+    except KeyError:
+        return None, None
 
 
-def load_instance(resource, record_id):
-    model, _ = RESOURCES[resource]
-    record = db.session.get(model, record_id)
-    if record is None:
-        return None, error_response(404, f"{model.__name__} {record_id} was not found.")
-    return record, None
+def get_record(resource, record_id):
+    model, _ = get_resource(resource)
+    if model is None:
+        return None
+    return db.session.get(model, record_id)
 
 
 def validate_booking(data):
@@ -106,105 +100,106 @@ def prepare_data(resource, data):
     return data
 
 
-@api.get("/<resource>")
-@resource_handler
-def list_records(resource):
-    model, schema_class = RESOURCES[resource]
-    records = db.session.scalars(db.select(model)).all()
-    return jsonify({"data": schema_class(many=True).dump(records), "count": len(records)})
+class CollectionResource(Resource):
+    def get(self, resource):
+        model, schema_class = get_resource(resource)
+        if model is None:
+            return {"error": "Resource not found.", "status": 404}, 404
+        records = db.session.scalars(db.select(model)).all()
+        return {"data": schema_class(many=True).dump(records), "count": len(records)}
+
+    def post(self, resource):
+        model, schema_class = get_resource(resource)
+        if model is None:
+            return {"error": "Resource not found.", "status": 404}, 404
+        data = prepare_data(resource, schema_class().load(json_body()))
+        record = model(**data)
+        db.session.add(record)
+        db.session.commit()
+        return {"data": schema_class().dump(record)}, 201
 
 
-@api.post("/<resource>")
-@resource_handler
-def create_record(resource):
-    payload = json_body()
-    if not isinstance(payload, dict):
-        return payload
-    model, schema_class = RESOURCES[resource]
-    data = prepare_data(resource, schema_class().load(payload))
-    record = model(**data)
-    db.session.add(record)
-    db.session.commit()
-    return jsonify({"data": schema_class().dump(record)}), 201
+class ItemResource(Resource):
+    def get(self, resource, record_id):
+        record = get_record(resource, record_id)
+        if record is None:
+            return self.not_found(resource, record_id)
+        return {"data": get_resource(resource)[1]().dump(record)}
+
+    def patch(self, resource, record_id):
+        record = get_record(resource, record_id)
+        if record is None:
+            return self.not_found(resource, record_id)
+        _, schema_class = get_resource(resource)
+        data = schema_class().load(json_body(), partial=True)
+        self.validate_update(resource, record, data)
+        for field, value in prepare_data(resource, data).items():
+            setattr(record, field, value)
+        db.session.commit()
+        return {"data": schema_class().dump(record)}
+
+    def delete(self, resource, record_id):
+        record = get_record(resource, record_id)
+        if record is None:
+            return self.not_found(resource, record_id)
+        db.session.delete(record)
+        db.session.commit()
+        return "", 204
+
+    @staticmethod
+    def not_found(resource, record_id):
+        model, _ = get_resource(resource)
+        name = model.__name__ if model is not None else "Resource"
+        return {"error": f"{name} {record_id} was not found.", "status": 404}, 404
+
+    @staticmethod
+    def validate_update(resource, record, data):
+        if resource == "trains":
+            total = data.get("total_seat", record.total_seat)
+            available = data.get("available_seat", record.available_seat)
+            if available > total:
+                raise ValidationError({"available_seat": ["Must not exceed total_seat."]})
+        elif resource == "schedules":
+            from_station = data.get("from_station_id", record.from_station_id)
+            to_station = data.get("to_station_id", record.to_station_id)
+            if from_station == to_station:
+                raise ValidationError({"to_station_id": ["Must differ from from_station_id."]})
+            departure_time = data.get("departure_time", record.departure_time)
+            arrival_time = data.get("arrival_time", record.arrival_time)
+            if arrival_time <= departure_time:
+                raise ValidationError({"arrival_time": ["Must be after departure_time."]})
+        elif resource == "bookings":
+            validate_booking({
+                "train_id": data.get("train_id", record.train_id),
+                "schedule_id": data.get("schedule_id", record.schedule_id),
+            })
 
 
-@api.get("/<resource>/<int:record_id>")
-@resource_handler
-def get_record(resource, record_id):
-    record, error = load_instance(resource, record_id)
-    if error:
-        return error
-    return jsonify({"data": RESOURCES[resource][1]().dump(record)})
+class FavouriteCollectionResource(Resource):
+    def get(self):
+        records = db.session.scalars(db.select(UserFavourite)).all()
+        return {"data": UserFavouriteSchema(many=True).dump(records), "count": len(records)}
+
+    def post(self):
+        record = UserFavourite(**UserFavouriteSchema().load(json_body()))
+        db.session.add(record)
+        db.session.commit()
+        return {"data": UserFavouriteSchema().dump(record)}, 201
 
 
-@api.patch("/<resource>/<int:record_id>")
-@resource_handler
-def update_record(resource, record_id):
-    record, error = load_instance(resource, record_id)
-    if error:
-        return error
-    payload = json_body()
-    if not isinstance(payload, dict):
-        return payload
-    _, schema_class = RESOURCES[resource]
-    data = schema_class().load(payload, partial=True)
-    if resource == "trains":
-        total = data.get("total_seat", record.total_seat)
-        available = data.get("available_seat", record.available_seat)
-        if available > total:
-            raise ValidationError({"available_seat": ["Must not exceed total_seat."]})
-    if resource == "schedules":
-        from_station = data.get("from_station_id", record.from_station_id)
-        to_station = data.get("to_station_id", record.to_station_id)
-        if from_station == to_station:
-            raise ValidationError({"to_station_id": ["Must differ from from_station_id."]})
-        departure_time = data.get("departure_time", record.departure_time)
-        arrival_time = data.get("arrival_time", record.arrival_time)
-        if arrival_time <= departure_time:
-            raise ValidationError({"arrival_time": ["Must be after departure_time."]})
-    if resource == "bookings":
-        booking_data = {"train_id": data.get("train_id", record.train_id), "schedule_id": data.get("schedule_id", record.schedule_id)}
-        validate_booking(booking_data)
-    for field, value in prepare_data(resource, data).items():
-        setattr(record, field, value)
-    db.session.commit()
-    return jsonify({"data": schema_class().dump(record)})
+class FavouriteResource(Resource):
+    def delete(self, user_id, train_id, station_id):
+        record = db.session.get(UserFavourite, (user_id, train_id, station_id))
+        if record is None:
+            return {"error": "Favourite was not found.", "status": 404}, 404
+        db.session.delete(record)
+        db.session.commit()
+        return "", 204
 
 
-@api.delete("/<resource>/<int:record_id>")
-@resource_handler
-def delete_record(resource, record_id):
-    record, error = load_instance(resource, record_id)
-    if error:
-        return error
-    db.session.delete(record)
-    db.session.commit()
-    return "", 204
-
-
-@api.get("/favourites")
-def list_favourites():
-    records = db.session.scalars(db.select(UserFavourite)).all()
-    return jsonify({"data": UserFavouriteSchema(many=True).dump(records), "count": len(records)})
-
-
-@api.post("/favourites")
-def create_favourite():
-    payload = json_body()
-    if not isinstance(payload, dict):
-        return payload
-    data = UserFavouriteSchema().load(payload)
-    record = UserFavourite(**data)
-    db.session.add(record)
-    db.session.commit()
-    return jsonify({"data": UserFavouriteSchema().dump(record)}), 201
-
-
-@api.delete("/favourites/<int:user_id>/<int:train_id>/<int:station_id>")
-def delete_favourite(user_id, train_id, station_id):
-    record = db.session.get(UserFavourite, (user_id, train_id, station_id))
-    if record is None:
-        return error_response(404, "Favourite was not found.")
-    db.session.delete(record)
-    db.session.commit()
-    return "", 204
+rest_api.add_resource(CollectionResource, "/<string:resource>")
+rest_api.add_resource(ItemResource, "/<string:resource>/<int:record_id>")
+rest_api.add_resource(FavouriteCollectionResource, "/favourites")
+rest_api.add_resource(
+    FavouriteResource, "/favourites/<int:user_id>/<int:train_id>/<int:station_id>"
+)
