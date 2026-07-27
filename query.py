@@ -13,7 +13,9 @@ with app.app_context():
 
     # first 5 users
     users = User.query.limit(5).all()
-    print("The first 5 users: ", users.id, users.first_name)
+    print("The first 5 users:")
+    for user in users:
+        print(user.id, user.first_name, user.last_name)
 
     # order users by last name
     users = User.query.order_by(User.first_name).all()
@@ -37,7 +39,7 @@ with app.app_context():
         print("Active users (using filter_by):")
         for user in users:
             print(user.id,user.first_name, user.last_name, user.status, user.phone_number)
-        return users()
+        return users
     
     get_active_users()
 
