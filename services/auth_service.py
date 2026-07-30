@@ -35,6 +35,10 @@ def roles_required(*roles):
                     "error": "Invalid session."
                 }, 401
 
+            print("Session role:", session.get("role"))
+            print("User role:", user.role.value)
+            print("Allowed roles:", roles)
+
             if user.role.value not in roles:
                 return {
                     "error": "Forbidden."

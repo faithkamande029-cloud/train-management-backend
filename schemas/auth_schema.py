@@ -1,8 +1,8 @@
-from marshmallow import Schema, fields, validates_schema
+from marshmallow import Schema, fields
 
 class LoginSchema(Schema):
-    email_address = fields.Email(required=True)
-    password = fields.Str(load_only=True)  
+    email = fields.Email(required=True)
+    password = fields.Str(required=True)  
 
 
 login_schema = LoginSchema()

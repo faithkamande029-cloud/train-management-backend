@@ -4,11 +4,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from models import  db, User
 from schemas.user_schema import UserSchema
-from schemas import login_schema
+from schemas.auth_schema import login_schema
 
 
 class RegistrationResource(Resource):
     def post(self):
+        print("REGISTER ENDPOINT HIT")
         data = UserSchema().load(request.get_json())
 
         if db.session.scalar(

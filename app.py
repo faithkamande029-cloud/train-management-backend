@@ -53,11 +53,18 @@ def log_request():
         content_type=request.headers.get("Content-Type")
     )
 
-PUBLIC_ENDPOINTS = ["login", "register"]
 
 @app.before_request
 def check_if_authenticated():
-    if not session.get("user_id") and request.endpoint not in PUBLIC_ENDPOINTS:
+    public_routes = {
+        "/api/register",
+        "/api/login",
+    }
+    if request.path in public_routes:
+        return
+
+    if not session.get("user_id" \
+    "") and request.endpoint:
         return {
             "status": 401,
             "message": "Not authenticated. Login to access resource",

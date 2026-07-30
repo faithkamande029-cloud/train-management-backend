@@ -10,6 +10,8 @@ from resources.schedules import ScheduleListResource, ScheduleResource
 from resources.bookings import BookingListResource, BookingResource
 from resources.payments import PaymentListResource, PaymentResource
 from resources.favourites import FavouriteListResource, FavouriteResource
+from resources.auth import (
+    RegistrationResource, LoginResource, LogoutResource, CheckSessionResource)
 
 from api.api import TrainManagementApi
 
@@ -19,6 +21,10 @@ rest_api = TrainManagementApi(api)
 
 rest_api.add_resource(UserListResource, "/users")
 rest_api.add_resource(UserResource, "/users/<int:user_id>")
+rest_api.add_resource(RegistrationResource, "/register")
+rest_api.add_resource(LoginResource, "/login")
+rest_api.add_resource(LogoutResource, "/logout")
+rest_api.add_resource(CheckSessionResource, "/check-session")
 rest_api.add_resource(TrainListResource, "/trains")
 rest_api.add_resource(TrainResource, "/trains/<int:train_id>")
 rest_api.add_resource(StationListResource, "/stations")
