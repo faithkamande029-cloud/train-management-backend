@@ -1,12 +1,7 @@
-from flask import Blueprint, request
-from flask_restful import Api, Resource
-from marshmallow import ValidationError
-from sqlalchemy.exc import IntegrityError
-from werkzeug.exceptions import HTTPException
-from werkzeug.security import generate_password_hash
+from flask import request
+from flask_restful import Resource
 
 from models import Payment, db 
-
 from schemas.payment_schema import PaymentSchema
 
 class PaymentListResource(Resource):

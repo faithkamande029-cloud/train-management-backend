@@ -1,16 +1,12 @@
 """Flask-RESTful resources for the train management service."""
 
-from flask import Blueprint, request
-from flask_restful import Api, Resource
-from marshmallow import ValidationError
-from sqlalchemy.exc import IntegrityError
-from werkzeug.exceptions import HTTPException
-from werkzeug.security import generate_password_hash
+from flask import request
+from flask_restful import Resource
 
 from models import Booking, db
 from services.booking_service import validate_booking
 from schemas.booking_schema import BookingSchema
-
+from services.auth_service import login_required
 
 class BookingListResource(Resource):
     def get(self):
@@ -27,6 +23,7 @@ class BookingListResource(Resource):
 
 
 class BookingResource(Resource):
+    @login_required
     def get(self, booking_id):
         booking = db.session.get(Booking, booking_id)
         if booking is None:

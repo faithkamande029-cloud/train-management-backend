@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask, request
+from flask import Flask, request, session
 from flask_migrate import Migrate
 from dotenv import load_dotenv
 from models import db
@@ -18,6 +18,20 @@ log = structlog.get_logger()
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///railway.db"
 
 migrate = Migrate(app=app, db=db)
+
+# app config
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URI")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
+
+
+app.config["SESSION_COOKIE_SAMESITE"] = os.environ.get(
+    "SESSION_COOKIE_SAMESITE", "Lax")
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get(
+    "SESSION_COOKIE_SECURE", "False") == "True"
+app.config["SESSION_COOKIE_HTTPONLY"] = os.environ.get(
+    "SESSION_COOKIE_HTTPONLY", "True") == "True"
+
 
 CORS_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "").split(",")
 CORS(
@@ -41,3 +55,11 @@ def log_request():
 
 PUBLIC_ENDPOINTS = ["login", "register"]
 
+@app.before_request
+def check_if_authenticated():
+    if not session.get("user_id") and request.endpoint not in PUBLIC_ENDPOINTS:
+        return {
+            "status": 401,
+            "message": "Not authenticated. Login to access resource",
+        }, 401
+    
