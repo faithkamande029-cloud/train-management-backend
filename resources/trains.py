@@ -8,14 +8,15 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash
 
 from models import db, Train
-
 from schemas.train_schema import TrainSchema
+from services.auth_service import roles_required
 
 class TrainListResource(Resource):
     def get(self):
         trains = db.session.scalars(db.select(Train)).all()
         return {"data": TrainSchema(many=True).dump(trains), "count": len(trains)}
 
+    @roles_required("admin")
     def post(self):
         train = Train(**TrainSchema().load(request.get_json()))
         db.session.add(train)
@@ -44,6 +45,7 @@ class TrainResource(Resource):
         db.session.commit()
         return {"data": TrainSchema().dump(train)}
 
+    @roles_required("admin")
     def delete(self, train_id):
         train = db.session.get(Train, train_id)
         if train is None:
@@ -52,3 +54,4 @@ class TrainResource(Resource):
         db.session.commit()
         return "", 204
 
+    
