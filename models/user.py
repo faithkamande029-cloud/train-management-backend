@@ -8,7 +8,6 @@ from . import db
 
 class UserRole(Enum):
     ADMIN = "admin"
-    EMPLOYEE = "employee"
     PASSENGER = "passenger"
 
 
