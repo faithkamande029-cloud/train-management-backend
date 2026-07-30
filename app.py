@@ -3,7 +3,7 @@ import os
 from flask import Flask, request, session
 from flask_migrate import Migrate
 from dotenv import load_dotenv
-from models import db
+from models import db, User
 from routes import api
 from flask_cors import CORS
 import structlog
