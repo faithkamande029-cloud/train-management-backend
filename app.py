@@ -14,17 +14,16 @@ load_dotenv()
 app = Flask(__name__)
 # app.secret_key = "hello"
 
-
 log = structlog.get_logger()
-
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///railway.db"
-
-migrate = Migrate(app=app, db=db)
 
 # app config
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URI")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
+
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///railway.db"
+
+migrate = Migrate(app=app, db=db)
 
 
 app.config["SESSION_COOKIE_SAMESITE"] = os.environ.get(
