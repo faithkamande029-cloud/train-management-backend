@@ -15,6 +15,13 @@ metadata = MetaData(
 
 db = SQLAlchemy(metadata=metadata)
 
+
+class StationStatus(Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    MAINTENANCE = "maintenance"
+
+
 class Station(db.Model):
     __tablename__ = "stations"
 
@@ -30,7 +37,9 @@ class Station(db.Model):
     )
 
     departing_schedules = db.relationship(
-        "Schedule", foreign_keys="Schedule.from_station_id", back_populates="from_station"
+        "Schedule",
+        foreign_keys="Schedule.from_station_id",
+        back_populates="from_station",
     )
     arriving_schedules = db.relationship(
         "Schedule", foreign_keys="Schedule.to_station_id", back_populates="to_station"

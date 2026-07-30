@@ -3,20 +3,19 @@
 from flask import Blueprint, request
 from werkzeug.security import generate_password_hash
 
-from .resources.trains import TrainListResource, TrainResource
-from .resources.users import UserResource, UserListResource
-from .resources.stations import StationListResource, StationResource
-from .resources.schedules import ScheduleListResource, ScheduleResource
-from .resources.bookings import BookingListResource, BookingResource
-from .resources.payments import PaymentListResource, PaymentResource
-from .resources.favourites import FavouriteListResource, FavouriteResource
+from resources.trains import TrainListResource, TrainResource
+from resources.users import UserResource, UserListResource
+from resources.stations import StationListResource, StationResource
+from resources.schedules import ScheduleListResource, ScheduleResource
+from resources.bookings import BookingListResource, BookingResource
+from resources.payments import PaymentListResource, PaymentResource
+from resources.favourites import FavouriteListResource, FavouriteResource
 
-from .api.api import TrainManagementApi
+from api.api import TrainManagementApi
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
 rest_api = TrainManagementApi(api)
-
 
 rest_api.add_resource(UserListResource, "/users")
 rest_api.add_resource(UserResource, "/users/<int:user_id>")

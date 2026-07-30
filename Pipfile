@@ -11,6 +11,8 @@ marshmallow = "*"
 flask = "*"
 flask-restful = "*"
 structlog = "*"
+werkzeug = "*"
+flask-cors = "*"
 
 [dev-packages]
 

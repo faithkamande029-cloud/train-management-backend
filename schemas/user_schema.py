@@ -2,7 +2,7 @@
 
 from marshmallow import RAISE, Schema, ValidationError, fields, validate, validates_schema
 
-from models import (UserRole, UserStatus,)
+from models import (UserRole, UserStatus)
 
 
 class BaseSchema(Schema):
