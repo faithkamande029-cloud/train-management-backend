@@ -1,0 +1,12 @@
+[packages]
+flask = "*"
+flask-restful = "*"
+flask-sqlalchemy = "*"
+flask-migrate = "*"
+flask-cors = "*"
+python-dotenv = "*"
+marshmallow = "*"
+gunicorn = "*"
+psycopg2-binary = "*"
+structlog = "*"
+psycopg = {extras = ["binary"], version = "*"}
