@@ -17,7 +17,13 @@ app = Flask(__name__)
 log = structlog.get_logger()
 
 # app config
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URI")
+database_uri = os.environ.get("DATABASE_URI")
+# The project depends on psycopg v3, so explicitly select that SQLAlchemy
+# driver when a standard PostgreSQL URL is supplied by Render or Neon.
+if database_uri and database_uri.startswith("postgresql://"):
+    database_uri = database_uri.replace("postgresql://", "postgresql+psycopg://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = database_uri
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
 
