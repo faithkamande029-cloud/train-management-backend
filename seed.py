@@ -28,6 +28,16 @@ def create_users():
     
     users_data = [
         {
+            "first_name": "Admin",
+            "last_name": "User",
+            "email": "admin@example.com",
+            "password": generate_password_hash("ChangeMe123!"),
+            "phone_number": "0700000000",
+            "date_of_birth": datetime(1990, 1, 1),
+            "role": UserRole.ADMIN,
+            "status": UserStatus.ACTIVE,
+        },
+        {
             "first_name": "Joe",
             "last_name": "Jackson",
             "email": "joe.jackson@example.com",
