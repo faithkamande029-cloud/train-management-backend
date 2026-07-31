@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask, request, session
+from flask import Flask, jsonify, request, session
 from flask_migrate import Migrate
 from dotenv import load_dotenv
 from models import db, User
@@ -44,6 +44,23 @@ db.init_app(app=app)
 
 app.register_blueprint(api)
 
+
+@app.get("/")
+def index():
+    """A public response for the service URL and Render health checks."""
+    return jsonify({
+        "service": "train-management-backend",
+        "status": "ok",
+        "api": "/api",
+        "health": "/health",
+    })
+
+
+@app.get("/health")
+def health_check():
+    """Report that the web process is available without requiring a session."""
+    return jsonify({"status": "ok"})
+
 @app.before_request
 def log_request():
     log.info(
@@ -59,14 +76,14 @@ def check_if_authenticated():
     public_routes = {
         "/api/register",
         "/api/login",
+        "/",
+        "/health",
     }
-    if request.path in public_routes:
+    if request.method == "OPTIONS" or request.path in public_routes:
         return
 
-    if not session.get("user_id" \
-    "") and request.endpoint:
+    if not session.get("user_id") and request.endpoint:
         return {
             "status": 401,
             "message": "Not authenticated. Login to access resource",
         }, 401
-    
