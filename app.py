@@ -104,6 +104,11 @@ def check_if_authenticated():
         "/api/login",
         "/api/check-session",
     }
+    public_prefixes = (
+        "/api/trains",
+        "/api/stations",
+        "/api/schedules",
+    )
 
     if request.method == "OPTIONS":
         return
@@ -111,7 +116,11 @@ def check_if_authenticated():
     if request.endpoint is None:
         return
 
-    if request.path in public_routes or request.path.startswith("/static/"):
+    if (
+        request.path in public_routes
+        or request.path.startswith("/static/")
+        or any(request.path.startswith(prefix) for prefix in public_prefixes)
+    ):
         return
 
     if not session.get("user_id"):
