@@ -1,16 +1,22 @@
-from flask import request
+from flask import request, session
 from flask_restful import Resource
 
-from models import Payment, db 
+from models import Payment, db
 from schemas.payment_schema import PaymentSchema
+from services.auth_service import login_required
+
 
 class PaymentListResource(Resource):
     def get(self):
         payments = db.session.scalars(db.select(Payment)).all()
         return {"data": PaymentSchema(many=True).dump(payments), "count": len(payments)}
 
+    @login_required
     def post(self):
-        payment = Payment(**PaymentSchema().load(request.get_json()))
+        payload = request.get_json() or {}
+        if "user_id" not in payload:
+            payload["user_id"] = session.get("user_id")
+        payment = Payment(**PaymentSchema().load(payload))
         db.session.add(payment)
         db.session.commit()
         return {"data": PaymentSchema().dump(payment)}, 201

@@ -7,6 +7,7 @@ from models import db, User
 from routes import api
 from flask_cors import CORS
 import structlog
+from urllib.parse import urlparse
 
 
 load_dotenv()
@@ -46,12 +47,34 @@ app.config["SESSION_COOKIE_HTTPONLY"] = (
 )
 
 
-raw_origins = os.environ.get("ALLOWED_ORIGINS") or os.environ.get("CORS_ORIGIN") or ""
-CORS_ORIGINS = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+def parse_origins(*origin_sources):
+    origins = []
+    for source in origin_sources:
+        if not source:
+            continue
+        for origin in source.split(","):
+            trimmed = origin.strip()
+            if not trimmed:
+                continue
+            parsed = urlparse(trimmed)
+            if parsed.scheme and parsed.netloc:
+                cleaned = f"{parsed.scheme}://{parsed.netloc}"
+            else:
+                cleaned = trimmed
+            if cleaned not in origins:
+                origins.append(cleaned)
+    return origins
+
+
+allowed_origins = os.environ.get("ALLOWED_ORIGINS", "")
+cors_origin = os.environ.get("CORS_ORIGIN", "")
+CORS_ORIGINS = parse_origins(allowed_origins, cors_origin)
 CORS(
     app,
     supports_credentials=True,
     origins=CORS_ORIGINS,
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 db.init_app(app=app)

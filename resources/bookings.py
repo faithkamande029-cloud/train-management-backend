@@ -8,11 +8,13 @@ from services.booking_service import validate_booking
 from schemas.booking_schema import BookingSchema
 from services.auth_service import login_required
 
+
 class BookingListResource(Resource):
     def get(self):
         bookings = db.session.scalars(db.select(Booking)).all()
         return {"data": BookingSchema(many=True).dump(bookings), "count": len(bookings)}
 
+    @login_required
     def post(self):
         data = BookingSchema().load(request.get_json())
         validate_booking(data["train_id"], data["schedule_id"])
