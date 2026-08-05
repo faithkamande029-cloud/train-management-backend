@@ -4,17 +4,17 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-flask-sqlalchemy = "*"
-python-dotenv = "*"
-flask-migrate = "*"
-marshmallow = "*"
 flask = "*"
 flask-restful = "*"
+flask-sqlalchemy = "*"
+flask-migrate = "*"
+flask-cors = "*"
+python-dotenv = "*"
+marshmallow = "*"
+gunicorn = "*"
+psycopg = {extras = ["binary"], version = "*"}
 structlog = "*"
 werkzeug = "*"
-flask-cors = "*"
-gunicorn = "*"
-psycopg2-binary = "*"
 
 [dev-packages]
 
