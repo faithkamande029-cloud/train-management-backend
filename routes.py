@@ -1,51 +1,34 @@
 """Flask-RESTful resources for the train management service."""
 
 from flask import Blueprint, request
-from flask_restful import Api, Resource
-from marshmallow import ValidationError
-from sqlalchemy.exc import IntegrityError
-from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash
 from datetime import datetime
 import random
 
-from models import Booking, Payment, Schedule, Station, Train, User, UserFavourite, db
-from schemas import (
-    BookingSchema,
-    PaymentSchema,
-    ScheduleSchema,
-    StationSchema,
-    TrainSchema,
-    UserFavouriteSchema,
-    UserSchema,
-)
+from resources.trains import TrainListResource, TrainResource
+from resources.users import UserResource, UserListResource
+from resources.stations import StationListResource, StationResource
+from resources.schedules import ScheduleListResource, ScheduleResource
+from resources.bookings import BookingListResource, BookingResource
+from resources.payments import PaymentListResource, PaymentResource
+from resources.favourites import FavouriteListResource, FavouriteResource
+from resources.auth import (
+    RegistrationResource, LoginResource, LogoutResource, CheckSessionResource)
+
+from api.api import TrainManagementApi
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
-
-class TrainManagementApi(Api):
-    """Return JSON errors for all API resources."""
-
-    def handle_error(self, error):
-        if isinstance(error, ValidationError):
-            return {
-                "error": "Validation failed.",
-                "status": 400,
-                "details": error.messages,
-            }, 400
-        if isinstance(error, IntegrityError):
-            db.session.rollback()
-            return {"error": "The request conflicts with an existing record.", "status": 409}, 409
-        if isinstance(error, HTTPException):
-            return {"error": error.description, "status": error.code}, error.code
-
-        db.session.rollback()
-        api.logger.exception("Unhandled API error", exc_info=error)
-        return {"error": "An unexpected server error occurred.", "status": 500}, 500
-
-
 rest_api = TrainManagementApi(api)
 
+<<<<<<< HEAD
+rest_api.add_resource(UserListResource, "/users")
+rest_api.add_resource(UserResource, "/users/<int:user_id>")
+rest_api.add_resource(RegistrationResource, "/register")
+rest_api.add_resource(LoginResource, "/login")
+rest_api.add_resource(LogoutResource, "/logout")
+rest_api.add_resource(CheckSessionResource, "/check-session")
+=======
 
 def validate_booking(train_id, schedule_id):
     train = db.session.get(Train, train_id)
@@ -509,6 +492,7 @@ rest_api.add_resource(UserListResource, "/users")
 rest_api.add_resource(UserResource, "/users/<int:user_id>")
 rest_api.add_resource(LoginResource, "/login")
 rest_api.add_resource(MeResource, "/me")
+>>>>>>> feature/seed
 rest_api.add_resource(TrainListResource, "/trains")
 rest_api.add_resource(TrainResource, "/trains/<int:train_id>")
 rest_api.add_resource(StationListResource, "/stations")
