@@ -12,9 +12,9 @@ flask-cors = "*"
 python-dotenv = "*"
 marshmallow = "*"
 gunicorn = "*"
-psycopg2-binary = "*"
-structlog = "*"
 psycopg = {extras = ["binary"], version = "*"}
+structlog = "*"
+werkzeug = "*"
 
 [dev-packages]
 
