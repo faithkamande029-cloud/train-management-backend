@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import MetaData
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 metadata = MetaData(
     naming_convention={
@@ -66,7 +66,7 @@ class PaymentMethod(Enum):
 class User(db.Model):
     __tablename__ = "users"
 
-    id = db.Column(db.Integer(), primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     first_name = db.Column(db.String, nullable=False)
     last_name = db.Column(db.String, nullable=False)
     email = db.Column(db.String(150), nullable=False, unique=True)
@@ -75,9 +75,12 @@ class User(db.Model):
     date_of_birth = db.Column(db.DateTime, nullable=False)
     role = db.Column(db.Enum(UserRole), default=UserRole.PASSENGER, nullable=False)
     status = db.Column(db.Enum(UserStatus), default=UserStatus.ACTIVE, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
-        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
     )
 
     payments = db.relationship("Payment", back_populates="user")
@@ -96,9 +99,12 @@ class Train(db.Model):
     available_seat = db.Column(db.Integer, nullable=False)
     status = db.Column(db.Enum(TrainStatus), nullable=False)
     description = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
-        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
     )
 
     schedules = db.relationship("Schedule", back_populates="train")
@@ -117,9 +123,12 @@ class Station(db.Model):
     city = db.Column(db.String(50), nullable=False)
     platform = db.Column(db.Integer, nullable=False)
     description = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
-        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
     )
 
     departing_schedules = db.relationship(
@@ -145,9 +154,12 @@ class Schedule(db.Model):
     arrival_time = db.Column(db.Time, nullable=False)
     status = db.Column(db.Enum(ScheduleStatus), nullable=False)
     platform = db.Column(db.Integer, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
-        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
     )
 
     train = db.relationship("Train", back_populates="schedules")
@@ -166,7 +178,7 @@ class Booking(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     booking_ref = db.Column(db.Text, nullable=False, unique=True)
     passenger_name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(100), nullable=False, unique=True)
+    email = db.Column(db.String(100), nullable=False)  # NOT unique anymore
     phone = db.Column(db.String(20), nullable=False)
     train_id = db.Column(db.Integer, db.ForeignKey("trains.id"), nullable=False)
     schedule_id = db.Column(db.Integer, db.ForeignKey("schedules.id"), nullable=False)
@@ -176,9 +188,12 @@ class Booking(db.Model):
     from_station = db.Column(db.String(100), nullable=False)
     to_station = db.Column(db.String(100), nullable=False)
     departure_time = db.Column(db.Time, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
-        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
     )
 
     train = db.relationship("Train", back_populates="bookings")
@@ -197,22 +212,27 @@ class Payment(db.Model):
     card_last4 = db.Column(db.String(4))
     status = db.Column(db.String(20), nullable=False)
     transaction_id = db.Column(db.String(50), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
-        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
     )
 
     booking = db.relationship("Booking", back_populates="payments")
     user = db.relationship("User", back_populates="payments")
 
 
+# Fixed: UserFavourite with auto-increment id
 class UserFavourite(db.Model):
     __tablename__ = "user_favourites"
 
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
-    train_id = db.Column(db.Integer, db.ForeignKey("trains.id"), primary_key=True)
-    station_id = db.Column(db.Integer, db.ForeignKey("stations.id"), primary_key=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    train_id = db.Column(db.Integer, db.ForeignKey("trains.id"), nullable=True)
+    station_id = db.Column(db.Integer, db.ForeignKey("stations.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = db.relationship("User", back_populates="favourites")
     train = db.relationship("Train", back_populates="favourites")

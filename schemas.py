@@ -1,119 +1,183 @@
-"""Request validation and response serialization for the API."""
-
-from marshmallow import RAISE, Schema, ValidationError, fields, validate, validates_schema
-
+from marshmallow import fields
+from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from models import (
-    BookingStatus,
-    PaymentMethod,
-    ScheduleStatus,
-    TrainStatus,
-    TrainType,
-    UserRole,
-    UserStatus,
+    User, Train, Station, Schedule, Booking, Payment, UserFavourite,
+    UserRole, UserStatus, TrainType, TrainStatus,
+    ScheduleStatus, BookingStatus, PaymentMethod
 )
 
 
-class BaseSchema(Schema):
+class UserSchema(SQLAlchemyAutoSchema):
     class Meta:
-        unknown = RAISE
+        model = User
+        load_instance = True
+        include_relationships = False
+        include_fk = False
+        fields = (
+            "id", "first_name", "last_name", "email",
+            "password", "phone_number", "date_of_birth",
+            "role", "status", "created_at", "updated_at"
+        )
+        dump_only = ("id", "created_at", "updated_at")
+        load_only = ("password",)
 
-    id = fields.Integer(dump_only=True)
-    created_at = fields.DateTime(dump_only=True)
-    updated_at = fields.DateTime(dump_only=True)
+    role = fields.Method(serialize="get_role", deserialize="load_role")
+    status = fields.Method(serialize="get_status", deserialize="load_status")
 
+    def get_role(self, obj):
+        return obj.role.value if obj.role else None
 
-class UserSchema(BaseSchema):
-    first_name = fields.String(required=True, validate=validate.Length(min=1, max=100))
-    last_name = fields.String(required=True, validate=validate.Length(min=1, max=100))
-    email = fields.Email(required=True, validate=validate.Length(max=150))
-    password = fields.String(required=True, load_only=True, validate=validate.Length(min=8, max=255))
-    phone_number = fields.String(required=True, validate=validate.Length(min=7, max=30))
-    date_of_birth = fields.Date(required=True)
-    role = fields.Enum(UserRole, by_value=True, load_default=UserRole.PASSENGER)
-    status = fields.Enum(UserStatus, by_value=True, load_default=UserStatus.ACTIVE)
+    def load_role(self, value):
+        if isinstance(value, str):
+            for member in UserRole:
+                if member.value == value.lower():
+                    return member
+        return value
 
+    def get_status(self, obj):
+        return obj.status.value if obj.status else None
 
-class TrainSchema(BaseSchema):
-    name = fields.String(required=True, validate=validate.Length(min=1))
-    type = fields.Enum(TrainType, by_value=True, required=True)
-    total_seat = fields.Integer(required=True, validate=validate.Range(min=1))
-    available_seat = fields.Integer(required=True, validate=validate.Range(min=0))
-    status = fields.Enum(TrainStatus, by_value=True, required=True)
-    description = fields.String(allow_none=True)
-
-    @validates_schema
-    def validate_capacity(self, data, **kwargs):
-        total = data.get("total_seat")
-        available = data.get("available_seat")
-        if total is not None and available is not None and available > total:
-            raise ValidationError(
-                {"available_seat": ["Must not exceed total_seat."]}
-            )
-
-
-class StationSchema(BaseSchema):
-    name = fields.String(required=True, validate=validate.Length(min=1))
-    train_number = fields.String(required=True, validate=validate.Length(min=1, max=10))
-    city = fields.String(required=True, validate=validate.Length(min=1, max=50))
-    platform = fields.Integer(required=True, validate=validate.Range(min=1))
-    description = fields.String(allow_none=True)
+    def load_status(self, value):
+        if isinstance(value, str):
+            for member in UserStatus:
+                if member.value == value.lower():
+                    return member
+        return value
 
 
-class ScheduleSchema(BaseSchema):
-    name = fields.String(required=True, validate=validate.Length(min=1, max=100))
-    train_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    from_station_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    to_station_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    departure_time = fields.Time(required=True)
-    arrival_time = fields.Time(required=True)
-    status = fields.Enum(ScheduleStatus, by_value=True, required=True)
-    platform = fields.Integer(required=True, validate=validate.Range(min=1))
+class TrainSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = Train
+        load_instance = True
+        include_relationships = False
+        include_fk = False
+        fields = (
+            "id", "name", "type", "total_seat", "available_seat",
+            "status", "description", "created_at", "updated_at"
+        )
+        dump_only = ("id", "created_at", "updated_at")
 
-    @validates_schema
-    def validate_stations_and_times(self, data, **kwargs):
-        errors = {}
-        if (
-            data.get("from_station_id") is not None
-            and data.get("from_station_id") == data.get("to_station_id")
-        ):
-            errors["to_station_id"] = ["Must differ from from_station_id."]
-        if (
-            data.get("departure_time") is not None
-            and data.get("arrival_time") is not None
-            and data["arrival_time"] <= data["departure_time"]
-        ):
-            errors["arrival_time"] = ["Must be after departure_time."]
-        if errors:
-            raise ValidationError(errors)
+    type = fields.Method(serialize="get_type", deserialize="load_type")
+    status = fields.Method(serialize="get_status", deserialize="load_status")
 
+    def get_type(self, obj):
+        return obj.type.value if obj.type else None
 
-class BookingSchema(BaseSchema):
-    booking_ref = fields.String(required=True, validate=validate.Length(min=1))
-    passenger_name = fields.String(required=True, validate=validate.Length(min=1, max=100))
-    email = fields.Email(required=True, validate=validate.Length(max=100))
-    phone = fields.String(required=True, validate=validate.Length(min=7, max=20))
-    train_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    schedule_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    seat_number = fields.String(required=True, validate=validate.Length(min=1, max=10))
-    fare = fields.Decimal(required=True, as_string=True, places=2, validate=validate.Range(min=0))
-    status = fields.Enum(BookingStatus, by_value=True, required=True)
-    from_station = fields.String(required=True, validate=validate.Length(min=1, max=100))
-    to_station = fields.String(required=True, validate=validate.Length(min=1, max=100))
-    departure_time = fields.Time(required=True)
+    def load_type(self, value):
+        if isinstance(value, str):
+            for member in TrainType:
+                if member.value == value.lower():
+                    return member
+        return value
+
+    def get_status(self, obj):
+        return obj.status.value if obj.status else None
+
+    def load_status(self, value):
+        if isinstance(value, str):
+            for member in TrainStatus:
+                if member.value == value.lower():
+                    return member
+        return value
 
 
-class PaymentSchema(BaseSchema):
-    booking_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    user_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    amount = fields.Decimal(required=True, as_string=True, places=2, validate=validate.Range(min=0))
-    method = fields.Enum(PaymentMethod, by_value=True, required=True)
-    card_last4 = fields.String(allow_none=True, validate=validate.Length(equal=4))
-    status = fields.String(required=True, validate=validate.Length(min=1, max=20))
-    transaction_id = fields.String(required=True, validate=validate.Length(min=1, max=50))
+class StationSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = Station
+        load_instance = True
+        include_relationships = False
+        include_fk = False
+        fields = (
+            "id", "name", "train_number", "city",
+            "platform", "description", "created_at", "updated_at"
+        )
+        dump_only = ("id", "created_at", "updated_at")
 
 
-class UserFavouriteSchema(Schema):
-    user_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    train_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    station_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    created_at = fields.DateTime(dump_only=True)
+class ScheduleSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = Schedule
+        load_instance = True
+        include_relationships = False
+        include_fk = True
+        fields = (
+            "id", "name", "train_id", "from_station_id", "to_station_id",
+            "departure_time", "arrival_time", "status",
+            "platform", "created_at", "updated_at"
+        )
+        dump_only = ("id", "created_at", "updated_at")
+
+    status = fields.Method(serialize="get_status", deserialize="load_status")
+
+    def get_status(self, obj):
+        return obj.status.value if obj.status else None
+
+    def load_status(self, value):
+        if isinstance(value, str):
+            for member in ScheduleStatus:
+                if member.value == value.lower():
+                    return member
+        return value
+
+
+class BookingSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = Booking
+        load_instance = True
+        include_relationships = False
+        include_fk = True
+        fields = (
+            "id", "booking_ref", "passenger_name", "email", "phone",
+            "train_id", "schedule_id", "seat_number", "fare",
+            "status", "from_station", "to_station", "departure_time",
+            "created_at", "updated_at"
+        )
+        dump_only = ("id", "created_at", "updated_at")
+
+    status = fields.Method(serialize="get_status", deserialize="load_status")
+
+    def get_status(self, obj):
+        return obj.status.value if obj.status else None
+
+    def load_status(self, value):
+        if isinstance(value, str):
+            for member in BookingStatus:
+                if member.value == value.lower():
+                    return member
+        return value
+
+
+class PaymentSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = Payment
+        load_instance = True
+        include_relationships = False
+        include_fk = True
+        fields = (
+            "id", "booking_id", "user_id", "amount",
+            "method", "card_last4", "status", "transaction_id",
+            "created_at", "updated_at"
+        )
+        dump_only = ("id", "created_at", "updated_at")
+
+    method = fields.Method(serialize="get_method", deserialize="load_method")
+
+    def get_method(self, obj):
+        return obj.method.value if obj.method else None
+
+    def load_method(self, value):
+        if isinstance(value, str):
+            for member in PaymentMethod:
+                if member.value == value.lower():
+                    return member
+        return value
+
+
+class UserFavouriteSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = UserFavourite
+        load_instance = True
+        include_relationships = False
+        include_fk = True
+        fields = ("id", "user_id", "train_id", "station_id", "created_at")
+        dump_only = ("id", "created_at")
